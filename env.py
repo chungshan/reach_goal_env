@@ -60,12 +60,51 @@ class BaseEnv(gym.Env):
         plt.pause(0.001)
 
 
+class ObstacleWrapper(gym.Wrapper):
+    def __init__(self, env, dynamic=False):
+        gym.Wrapper.__init__(self, env)
+        self.obstacle_pos = np.random.uniform(4, 6, 2)
+        self.ob_w = 1
+        self.ob_h = 1
+        self.dynamic = dynamic
+
+    def reset(self):
+        obs = self.env.reset()
+        if self.dynamic:
+            self.obstacle_pos = np.random.uniform(4, 6, 2)
+        return obs
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        if self.check_collision(obs):
+            reward = -50
+            done = True
+            info["Collision"] = True
+
+        if self.dynamic:
+            self.obstacle_pos += np.random.uniform(-0.1, 0.1, 2)
+            self.obstacle_pos = np.clip(self.obstacle_pos, 4, 6)
+            info["obstacle_pos"] = self.obstacle_pos
+        return obs, reward, done, info
+
+    def check_collision(self, obs):
+        collision = False
+        if self.obstacle_pos[0] - self.ob_w/2 <= obs[0] <= self.obstacle_pos[0] + self.ob_w/2:
+            collision = True
+
+        if self.obstacle_pos[1] - self.ob_h/2 <= obs[1] <= self.obstacle_pos[1] + self.ob_h/2:
+            collision = True
+
+        return collision
+
+
 class ImageWrapper(gym.Wrapper):
-    def __init__(self, env, resolution):
+    def __init__(self, env, resolution, back_ground=(255, 255, 255)):
         gym.Wrapper.__init__(self, env)
         self.resolution = resolution
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(3, resolution, resolution), dtype=np.uint8)
         self.img_state = None
+        self.back_ground_color = back_ground
 
     def reset(self):
         obs = self.env.reset()
@@ -73,16 +112,26 @@ class ImageWrapper(gym.Wrapper):
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
-
+        self.render()
         return self.get_img(obs), reward, done, info
 
     def get_img(self, obs):
         obs = self.obs_to_pixel(obs)
         goal = self.obs_to_pixel(self.env.goal)
         img_state = np.zeros((self.resolution, self.resolution, 3), np.uint8)
-        img_state.fill(255)  # create white img
+        img_state[:, :] = self.back_ground_color  # create white img
         img_state = cv2.circle(img_state, tuple(obs), 2, (255, 0, 0), -1)
+
+        # plot obstacle if exist
+        if hasattr(self.env, 'obstacle_pos'):
+            obstacle_pos = self.obs_to_pixel(self.env.obstacle_pos.copy())
+            pixel_ob = [self.env.ob_w / self.env.map_size[0] * self.resolution, self.env.ob_h / self.env.map_size[1] * self.resolution]
+            img_state = cv2.rectangle(img_state, (obstacle_pos[0] - int(pixel_ob[0] / 2), obstacle_pos[1] - int(pixel_ob[1] / 2)),
+                                      (obstacle_pos[0] + int(pixel_ob[0] / 2), obstacle_pos[1] + int(pixel_ob[1] / 2)),
+                                      color=(0, 0, 255), thickness=-1)
+
         self.img_state = cv2.drawMarker(img_state, tuple(goal), (0, 0, 255), cv2.MARKER_STAR, 10)
+
         return self.img_state.copy().transpose(2, 0, 1)
 
     def obs_to_pixel(self, obs):
