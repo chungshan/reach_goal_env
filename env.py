@@ -14,7 +14,7 @@ class BaseEnv(gym.Env):
         self.goal = np.array([9, 9])
         self.max_dist = np.sqrt(np.sum(self.map_size ** 2))
         self.step_ = 0
-        self._max_step = 150
+        self._max_episode_steps = 150
         self.fig, self.ax = None, None
 
     def step(self, action):
@@ -36,7 +36,7 @@ class BaseEnv(gym.Env):
             else:
                 reward = np.exp(1 - dist / self.max_dist)
 
-        if self.step_ == self._max_step:
+        if self.step_ == self._max_episode_steps:
             done = True
 
         return self.obs, reward, done, {"episode": None, "reached": reached}
@@ -66,7 +66,8 @@ class ImageWrapper(gym.Wrapper):
         self.resolution = resolution
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(3, resolution, resolution), dtype=np.uint8)
         self.img_state = None
-
+        self._max_episode_steps = self.env._max_episode_steps
+        self._mode = 'rgb'
     def reset(self):
         obs = self.env.reset()
         return self.get_img(obs)
@@ -95,6 +96,8 @@ class ImageWrapper(gym.Wrapper):
 
         cv2.imshow("Render", cv2.resize(self.img_state, (256, 256), interpolation=cv2.INTER_AREA))
         cv2.waitKey(1)
+
+        return cv2.resize(self.img_state, (256, 256), interpolation=cv2.INTER_AREA)
 
 
 class GrayImageWrapper(gym.Wrapper):
